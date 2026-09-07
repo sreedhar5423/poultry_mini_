@@ -1,0 +1,28 @@
+# Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs
+dist/
+frontend/dist/
+
+# Python cache & virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Temporary uploads & logs
+temp_uploads/
+*.log
+
+# Environment variables & OS files
+.env
+.env.local
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

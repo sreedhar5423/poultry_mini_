@@ -1,0 +1,73 @@
+{
+  "0": {
+    "key": "cocci",
+    "name": "Coccidiosis",
+    "severity": "High",
+    "description": "A parasitic infection of the intestinal tract caused by Eimeria protozoa, leading to gut lining damage, bloody diarrhea, and weight loss.",
+    "symptoms": [
+      "Bloody or mucoid droppings",
+      "Ruffled feathers and lethargy",
+      "Decreased feed and water intake",
+      "Pale comb and wattles"
+    ],
+    "treatment": [
+      "Administer Anticoccidial medication (e.g., Amprolium, Sulfadimethoxine) in drinking water immediately.",
+      "Isolate severely affected birds.",
+      "Keep litter dry and clean; replace wet bedding.",
+      "Provide electrolyte and vitamin supplements (A and K) to assist gut recovery."
+    ]
+  },
+  "1": {
+    "key": "healthy",
+    "name": "Healthy",
+    "severity": "None",
+    "description": "No symptoms of infection detected. Bird appears healthy with normal droppings and vital parameters.",
+    "symptoms": [
+      "Bright, alert eyes and active behavior",
+      "Normal feed and water consumption",
+      "Firm, well-formed droppings with white urate caps",
+      "Smooth, intact feathering"
+    ],
+    "treatment": [
+      "Maintain strict biosecurity protocols.",
+      "Continue standard feeding, fresh clean water, and vaccination schedule.",
+      "Ensure proper ventilation and dry litter management."
+    ]
+  },
+  "2": {
+    "key": "ncd",
+    "name": "Newcastle Disease (NCD)",
+    "severity": "Critical",
+    "description": "A highly contagious viral infection affecting respiratory, nervous, and digestive systems in poultry. Can cause severe flock mortality.",
+    "symptoms": [
+      "Respiratory distress, gasping, sneezing, coughing",
+      "Greenish or watery diarrhea",
+      "Nervous signs: twisted neck (torticollis), paralysis, tremors",
+      "Sudden drop in egg production with misshapen eggs"
+    ],
+    "treatment": [
+      "Quarantine affected birds immediately to protect the rest of the flock.",
+      "Report suspected outbreak to official veterinary authorities.",
+      "Provide supportive care with vitamins and antibiotics to prevent secondary bacterial infections.",
+      "Strictly vaccinate uninfected birds against NCD according to local protocol."
+    ]
+  },
+  "3": {
+    "key": "salmo",
+    "name": "Salmonella Infection",
+    "severity": "High",
+    "description": "Bacterial infection caused by Salmonella species (e.g., S. pullorum / S. gallinarum) causing systemic illness, enteritis, and high mortality in young chicks.",
+    "symptoms": [
+      "Yellowish, chalky, or white watery diarrhea (pasting of vent)",
+      "Depression, huddling near heat sources",
+      "Loss of appetite and stunted growth",
+      "Increased flock mortality"
+    ],
+    "treatment": [
+      "Administer vet-prescribed antimicrobial therapy (e.g., Enrofloxacin, Amoxicillin, or Trimethoprim-Sulfa).",
+      "Sanitize all feeding and watering equipment thoroughly.",
+      "Dispose of infected carcasses and contaminated bedding safely.",
+      "Implement rodent and pest control to prevent reinfection."
+    ]
+  }
+}
