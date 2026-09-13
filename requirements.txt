@@ -1,0 +1,18 @@
+# PoulCare AI backend dependencies
+# Install with:  pip install -r requirements.txt
+#
+# NOTE: torch/torchvision are commented out because the correct build depends on
+# your machine (CPU vs GPU). Install them first with the appropriate index, e.g.:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   (or plain `pip install torch torchvision` for the CUDA build on GPU machines)
+
+numpy==1.26.4
+opencv-python-headless==4.10.0.84
+flask
+pillow
+scikit-learn
+matplotlib
+pyyaml
+requests
+ultralytics==8.3.221
+inference-sdk

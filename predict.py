@@ -119,7 +119,7 @@ def map_class_to_disease_group(class_id):
             return group_key, info
     return "ncd", DISEASE_MAPPING["ncd"]
 
-def predict_disease(image_input, model=None, conf_threshold=0.20):
+def predict_disease(image_input, model=None, conf_threshold=0.20, imgsz=640, iou=0.45, tta=False):
     if model is None:
         model = load_model()
 
@@ -134,8 +134,10 @@ def predict_disease(image_input, model=None, conf_threshold=0.20):
     else:
         raise ValueError("Unsupported image input type")
 
-    # Perform inference with Hugging Face YOLO model
-    results = model(img_np, conf=conf_threshold, verbose=False)
+    # Perform inference with PoulCare Neural Vision YOLO model.
+    # imgsz: higher resolution catches smaller/occluded lesions.
+    # augment=True enables built-in test-time augmentation for a small accuracy boost.
+    results = model(img_np, conf=conf_threshold, imgsz=imgsz, iou=iou, verbose=False, augment=tta)
     result = results[0]
 
     detections = []
