@@ -172,11 +172,50 @@ FECAL_MIN_CONFIDENCE=0.50 python app.py
 
 or per-call via `predict_fecal(..., thresholds={...})`.
 
-## 6. Run the full app
+## 6. Image AI Diagnosis (Roboflow)
+
+The **Image AI Diagnosis** tab runs on a Roboflow serverless model instead of
+the bundled local YOLO weights:
+
+```
+model_id : poultry-disease-detection-quprj/9
+api_url  : https://serverless.roboflow.com
+api_key  : configured in roboflow_detector.py (env-var overridable)
+```
+
+Configuration (set before starting the app if you need to change them):
+
+```bash
+export ROBOFLOW_API_KEY="your-key"
+export ROBOFLOW_MODEL_ID="your-workspace/your-model/version"
+export ROBOFLOW_API_URL="https://serverless.roboflow.com"   # optional
+python app.py
+```
+
+Notes:
+
+* The app calls the Roboflow REST endpoint directly with `requests`
+  (multipart upload + `api_key` query param + `Authorization` header), which is
+  equivalent to the `inference_sdk.InferenceHTTPClient` snippet. This avoids the
+  `inference-sdk` dependency, which forces `numpy>=2.0` and GUI OpenCV and
+  breaks the CPU/headless torch stack used by the rest of the app.
+* The model's raw class names are mapped to the 5 disease groups
+  (Coccidiosis / Newcastle / Fowlpox / Salmonella / Healthy) via
+  `ALIAS_RULES` in `roboflow_detector.py`. If your model uses different class
+  names, extend that list.
+* Requires internet access on the machine running the app.
+* If the Roboflow call fails (no internet / bad key / model not found), the API
+  returns `502 {"code": "roboflow_error", ...}` and the UI shows the message.
+* The **Video Detection AI** tab still uses the local YOLO11 weights
+  (`weights/hf_poultry_yolo11n.pt`) and the **Fecal Detection AI** tab still
+  uses the local MobileNetV3 classifier (`poultry_disease_model.pth`).
+
+## 7. Run the full app
 
 ```bash
 # Backend
-pip install flask ultralytics opencv-python-headless torch torchvision scikit-learn matplotlib pillow
+pip install -r requirements.txt
+# (install torch/torchvision first for your platform — see requirements.txt header)
 python app.py          # http://localhost:5000
 
 # Frontend (in another terminal)

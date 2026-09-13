@@ -6,6 +6,16 @@ import {
 } from 'lucide-react';
 import { POULTRY_DISEASES, SYMPTOM_CHECKLIST } from '../data/diseaseData';
 
+// Friendly labels for every disease key the backend can return
+const DISEASE_LABELS = {
+  cocci: 'Coccidiosis',
+  healthy: 'Healthy',
+  ncd: 'Newcastle Disease',
+  salmo: 'Salmonella',
+  fowlpox: 'Fowlpox',
+};
+const labelFor = (key) => DISEASE_LABELS[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : key);
+
 export default function Diagnosis() {
   const [activeTab, setActiveTab] = useState('image'); // 'image' | 'symptoms' | 'video'
 
@@ -67,19 +77,21 @@ export default function Diagnosis() {
         response = await fetch('http://localhost:5000/predict', { method: 'POST', body: formData });
       }
 
-      if (!response.ok) {
-        throw new Error(`Server status ${response.status}: Failed to process prediction.`);
-      }
+      const resData = await response.json().catch(() => null);
 
-      const resData = await response.json();
-      if (resData.status === 'success' && resData.data) {
+      if (response.ok && resData && resData.status === 'success' && resData.data) {
         setImageResult(resData.data);
+        setErrorMsg(null);
+      } else if (resData && resData.error) {
+        setImageResult(null);
+        setErrorMsg(resData.error);
       } else {
-        throw new Error(resData.error || 'Invalid API response format.');
+        setImageResult(null);
+        throw new Error(`Server status ${response.status}: Failed to process prediction.`);
       }
     } catch (err) {
       console.warn('API Error or server offline:', err);
-      setErrorMsg('Error connecting to Hugging Face backend model at http://localhost:5000. Please start Flask app.py.');
+      setErrorMsg('Error connecting to the Roboflow diagnosis backend at http://localhost:5000. Please start Flask app.py and check your internet connection.');
     } finally {
       setLoading(false);
     }
@@ -271,7 +283,7 @@ export default function Diagnosis() {
           </div>
           <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 dark:text-white">Poultry Disease Diagnosis Portal</h1>
           <p className="text-slate-600 dark:text-slate-400 mt-2 text-base">
-            Powered by <span className="font-bold text-emerald-600 dark:text-emerald-400">PoulCare-YOLOv11 Vision AI</span> (26 Clinical Lesion Classes) and a <span className="font-bold text-emerald-600 dark:text-emerald-400">dedicated Fecal Diagnostic Engine</span>. Upload a bird photo, a farm video, or a droppings photo — or use the symptom checker.
+            Powered by the <span className="font-bold text-emerald-600 dark:text-emerald-400">PoulCare Roboflow Engine</span> for image AI, <span className="font-bold text-emerald-600 dark:text-emerald-400">YOLOv11 Vision AI</span> for video, and a <span className="font-bold text-emerald-600 dark:text-emerald-400">dedicated Fecal Diagnostic Engine</span>. Upload a bird photo, a farm video, or a droppings photo — or use the symptom checker.
           </p>
         </div>
 
@@ -350,7 +362,7 @@ export default function Diagnosis() {
                   </div>
                   <div>
                     <span className="text-lg font-bold text-slate-900 dark:text-white block">Click to upload poultry lesion or bird photo</span>
-                    <span className="text-slate-500 dark:text-slate-400 text-sm mt-1 block">Detects 26 clinical lesions (JPG, PNG, JPEG) via PoulCare Vision AI</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-sm mt-1 block">Detects poultry diseases &amp; lesions via the Roboflow AI engine (JPG, PNG, JPEG)</span>
                   </div>
                 </label>
               ) : (
@@ -382,12 +394,12 @@ export default function Diagnosis() {
                     {loading ? (
                       <>
                         <RefreshCw className="h-5 w-5 animate-spin" />
-                        <span>Running PoulCare Vision AI Neural Net...</span>
+                        <span>Running Roboflow AI Diagnosis...</span>
                       </>
                     ) : (
                       <>
                         <Sparkles className="h-5 w-5" />
-                        <span>Analyze Photo With PoulCare AI</span>
+                        <span>Analyze Photo With Roboflow AI</span>
                       </>
                     )}
                   </button>
@@ -448,7 +460,7 @@ export default function Diagnosis() {
                         <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800/80 p-3 rounded-xl flex items-center justify-between text-xs">
                           <div>
                             <span className="font-bold text-slate-900 dark:text-white block">{det.class_name}</span>
-                            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-mono">BBox: [{det.bbox.join(', ')}]</span>
+                            <span className="text-slate-500 dark:text-slate-400 text-[11px] font-mono">{det.bbox ? `BBox: [${det.bbox.join(', ')}]` : 'Classification result'}</span>
                           </div>
                           <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold px-2.5 py-1 rounded-lg">
                             {det.confidence}%
@@ -467,7 +479,7 @@ export default function Diagnosis() {
                       {Object.entries(imageResult.class_probabilities).map(([key, val]) => (
                         <div key={key} className="space-y-1">
                           <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-                            <span className="capitalize font-medium">{key === 'cocci' ? 'Coccidiosis' : key === 'ncd' ? 'Newcastle Disease' : key === 'fowlpox' ? 'Fowlpox' : 'Healthy'}</span>
+                            <span className="capitalize font-medium">{labelFor(key)}</span>
                             <span className="font-bold text-slate-800 dark:text-slate-200">{val}%</span>
                           </div>
                           <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
@@ -776,7 +788,7 @@ export default function Diagnosis() {
                       {Object.entries(videoResult.class_probabilities).map(([key, val]) => (
                         <div key={key} className="space-y-1">
                           <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
-                            <span className="capitalize font-medium">{key === 'cocci' ? 'Coccidiosis' : key === 'ncd' ? 'Newcastle Disease' : key === 'fowlpox' ? 'Fowlpox' : 'Healthy'}</span>
+                            <span className="capitalize font-medium">{labelFor(key)}</span>
                             <span className="font-bold text-slate-800 dark:text-slate-200">{val}%</span>
                           </div>
                           <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">

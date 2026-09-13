@@ -4,9 +4,10 @@ import json
 import tempfile
 from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image
-from predict import predict_disease, load_model, load_class_mapping
+from predict import load_model, load_class_mapping
 from video_detector import process_video_detection
 from fecal_detector import predict_fecal, load_fecal_model, FecalImageError
+from roboflow_detector import predict_image_roboflow, RoboflowInferenceError
 
 # Initialize Flask App with static folder pointing to frontend build dist
 frontend_dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
@@ -57,12 +58,16 @@ def predict():
         image_bytes = file.read()
         image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         
-        result = predict_disease(image, model=MODEL)
+        # Image AI diagnosis now runs on the Roboflow model (user-provided).
+        result = predict_image_roboflow(image)
         
         return jsonify({
             "status": "success",
             "data": result
         })
+    except RoboflowInferenceError as e:
+        print(f"Roboflow Error: {e}")
+        return jsonify({"status": "error", "code": "roboflow_error", "error": str(e)}), 502
     except Exception as e:
         print(f"Prediction Error: {e}")
         return jsonify({"status": "error", "error": str(e)}), 500
