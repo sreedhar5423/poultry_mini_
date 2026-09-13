@@ -147,7 +147,32 @@ on video improves even with the current weights.
 
 ---
 
-## 5. Run the full app
+## 5. Fecal image validation gate
+
+`predict_fecal` (used by the **Fecal Detection AI** tab) first checks that the
+uploaded image actually looks like a droppings sample. If it doesn't (bird,
+person, landscape, document, flat/solid image, ...), the API returns
+`422 {"code": "not_fecal_image", "error": "..."}` and the UI shows a clear
+"please upload a fecal image" message.
+
+The gate combines 4 signals, all tunable:
+
+| Signal | Env var | Default | Meaning |
+|---|---|---|---|
+| Top-class confidence | `FECAL_MIN_CONFIDENCE` | `0.55` | reject if the model is less sure than this |
+| Prediction entropy | `FECAL_MAX_ENTROPY` | `0.62` | reject if the 4-class probabilities are too spread out |
+| Blue/purple pixel ratio | `FECAL_MAX_NONFECAL_HUE` | `0.30` | reject if >30% pixels are saturated blue/violet (never in droppings) |
+| Image texture | `FECAL_MIN_TEXTURE` | `5.0` | reject if the image is too flat/uniform |
+
+Tune by setting the env var before starting the app, e.g.:
+
+```bash
+FECAL_MIN_CONFIDENCE=0.50 python app.py
+```
+
+or per-call via `predict_fecal(..., thresholds={...})`.
+
+## 6. Run the full app
 
 ```bash
 # Backend

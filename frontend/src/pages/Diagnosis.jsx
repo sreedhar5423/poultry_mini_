@@ -230,18 +230,22 @@ export default function Diagnosis() {
         response = await fetch('http://localhost:5000/predict_fecal', { method: 'POST', body: formData });
       }
 
-      if (!response.ok) {
-        throw new Error(`Server status ${response.status}: Failed to process fecal diagnosis.`);
-      }
+      // Parse the JSON body even when the status is an error (e.g. 422 not-fecal)
+      const resData = await response.json().catch(() => null);
 
-      const resData = await response.json();
-      if (resData.status === 'success' && resData.data) {
+      if (response.ok && resData && resData.status === 'success' && resData.data) {
         setFecalResult(resData.data);
+        setFecalErrorMsg(null);
+      } else if (resData && resData.error) {
+        setFecalResult(null);
+        setFecalErrorMsg(resData.error);
       } else {
-        throw new Error(resData.error || 'Invalid API response format.');
+        setFecalResult(null);
+        setFecalErrorMsg(`Server status ${response.status}: Failed to process fecal diagnosis.`);
       }
     } catch (err) {
       console.warn('Fecal API Error or server offline:', err);
+      setFecalResult(null);
       setFecalErrorMsg('Error connecting to the fecal diagnostic backend at http://localhost:5000. Please start Flask app.py.');
     } finally {
       setFecalLoading(false);

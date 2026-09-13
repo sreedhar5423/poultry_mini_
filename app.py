@@ -6,7 +6,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image
 from predict import predict_disease, load_model, load_class_mapping
 from video_detector import process_video_detection
-from fecal_detector import predict_fecal, load_fecal_model
+from fecal_detector import predict_fecal, load_fecal_model, FecalImageError
 
 # Initialize Flask App with static folder pointing to frontend build dist
 frontend_dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
@@ -88,6 +88,13 @@ def predict_fecal_route():
             "status": "success",
             "data": result
         })
+    except FecalImageError as e:
+        # Uploaded image is not a fecal sample -> clear, user-facing error
+        return jsonify({
+            "status": "error",
+            "code": "not_fecal_image",
+            "error": str(e)
+        }), 422
     except Exception as e:
         print(f"Fecal Prediction Error: {e}")
         return jsonify({"status": "error", "error": str(e)}), 500
