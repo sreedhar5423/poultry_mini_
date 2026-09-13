@@ -425,8 +425,21 @@ export default function Diagnosis() {
                       <span>PoulCare AI Vision Output</span>
                     </span>
                     <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mt-1">{imageResult.disease_name}</h2>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Model: <code className="bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded font-mono">{imageResult.model_source}</code>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 flex flex-wrap items-center gap-2">
+                      <span>
+                        Model: <code className="bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded font-mono">{imageResult.model_source}</code>
+                      </span>
+                      {imageResult.engine === 'local_offline' ? (
+                        <span className="inline-flex items-center space-x-1 bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full text-[11px] font-bold">
+                          <ShieldAlert className="h-3 w-3" />
+                          <span>Offline mode — local model</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center space-x-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[11px] font-bold">
+                          <Sparkles className="h-3 w-3" />
+                          <span>Roboflow Cloud</span>
+                        </span>
+                      )}
                     </div>
                   </div>
 

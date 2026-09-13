@@ -203,9 +203,11 @@ Notes:
   (Coccidiosis / Newcastle / Fowlpox / Salmonella / Healthy) via
   `ALIAS_RULES` in `roboflow_detector.py`. If your model uses different class
   names, extend that list.
-* Requires internet access on the machine running the app.
-* If the Roboflow call fails (no internet / bad key / model not found), the API
-  returns `502 {"code": "roboflow_error", ...}` and the UI shows the message.
+* **Offline fallback:** the Image AI tab tries Roboflow first; if Roboflow is
+  unreachable (no internet / bad key / model not found), it automatically falls
+  back to the bundled local YOLO11 model so image diagnosis still works offline.
+  The result includes an `engine` field (`roboflow` or `local_offline`) and the
+  UI shows an "Offline mode — local model" badge when the fallback was used.
 * The **Video Detection AI** tab still uses the local YOLO11 weights
   (`weights/hf_poultry_yolo11n.pt`) and the **Fecal Detection AI** tab still
   uses the local MobileNetV3 classifier (`poultry_disease_model.pth`).

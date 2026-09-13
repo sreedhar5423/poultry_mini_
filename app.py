@@ -4,7 +4,7 @@ import json
 import tempfile
 from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image
-from predict import load_model, load_class_mapping
+from predict import predict_disease, load_model, load_class_mapping
 from video_detector import process_video_detection
 from fecal_detector import predict_fecal, load_fecal_model, FecalImageError
 from roboflow_detector import predict_image_roboflow, RoboflowInferenceError
@@ -58,16 +58,25 @@ def predict():
         image_bytes = file.read()
         image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
         
-        # Image AI diagnosis now runs on the Roboflow model (user-provided).
-        result = predict_image_roboflow(image)
-        
+        # Image AI diagnosis: try the Roboflow cloud model first (best accuracy).
+        # If Roboflow is unreachable (offline / no internet / auth error), fall
+        # back to the bundled local YOLO11 model so the app keeps working offline.
+        result = None
+        try:
+            result = predict_image_roboflow(image)
+            result["engine"] = "roboflow"
+            result["online"] = True
+        except RoboflowInferenceError as e:
+            print(f"Roboflow unavailable, falling back to local model: {e}")
+            result = predict_disease(image, model=MODEL)
+            result["engine"] = "local_offline"
+            result["online"] = False
+            result["fallback_reason"] = str(e)
+
         return jsonify({
             "status": "success",
             "data": result
         })
-    except RoboflowInferenceError as e:
-        print(f"Roboflow Error: {e}")
-        return jsonify({"status": "error", "code": "roboflow_error", "error": str(e)}), 502
     except Exception as e:
         print(f"Prediction Error: {e}")
         return jsonify({"status": "error", "error": str(e)}), 500
