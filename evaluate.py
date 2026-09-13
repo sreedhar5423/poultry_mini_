@@ -94,6 +94,14 @@ def evaluate():
     report = classification_report(all_targets, all_preds, target_names=display_names, digits=4)
     print(report, flush=True)
 
+    # Save machine-readable report
+    report_dict = classification_report(
+        all_targets, all_preds, target_names=display_names, digits=4, output_dict=True
+    )
+    with open("evaluation_report.json", "w") as f:
+        json.dump(report_dict, f, indent=2)
+    print("Saved classification report to evaluation_report.json", flush=True)
+
     # Compute & Plot Confusion Matrix
     cm = confusion_matrix(all_targets, all_preds)
     fig, ax = plt.subplots(figsize=(8, 7))

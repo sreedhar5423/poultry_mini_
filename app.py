@@ -6,6 +6,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image
 from predict import predict_disease, load_model, load_class_mapping
 from video_detector import process_video_detection
+from fecal_detector import predict_fecal, load_fecal_model
 
 # Initialize Flask App with static folder pointing to frontend build dist
 frontend_dist = os.path.join(os.path.dirname(__file__), 'frontend', 'dist')
@@ -16,6 +17,11 @@ print("Preloading PoulCare Neural Vision Detection Model...")
 MODEL = load_model()
 CLASS_MAPPING = load_class_mapping()
 print(f"PoulCare Neural Vision Model loaded successfully! {len(CLASS_MAPPING)} classes registered.")
+
+# Preload PoulCare Fecal Diagnostic model into memory
+print("Preloading PoulCare Fecal Diagnostic Model...")
+FECAL_MODEL = load_fecal_model()
+print("PoulCare Fecal Diagnostic Model loaded successfully! 4 fecal classes registered.")
 
 @app.after_request
 def add_cors_headers(response):
@@ -31,7 +37,9 @@ def health():
         "model_source": "PoulCare-YOLOv11-Vision",
         "model_loaded": MODEL is not None,
         "class_count": len(CLASS_MAPPING),
-        "classes": CLASS_MAPPING
+        "classes": CLASS_MAPPING,
+        "fecal_model_loaded": FECAL_MODEL is not None,
+        "fecal_classes": ["cocci", "healthy", "ncd", "salmo"]
     })
 
 @app.route('/predict', methods=['POST', 'OPTIONS'])
@@ -57,6 +65,31 @@ def predict():
         })
     except Exception as e:
         print(f"Prediction Error: {e}")
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route('/predict_fecal', methods=['POST', 'OPTIONS'])
+def predict_fecal_route():
+    if request.method == 'OPTIONS':
+        return jsonify({}), 200
+    try:
+        if 'file' not in request.files:
+            return jsonify({"status": "error", "error": "No image file uploaded"}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"status": "error", "error": "Empty filename"}), 400
+
+        image_bytes = file.read()
+        image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+
+        result = predict_fecal(image, model=FECAL_MODEL)
+
+        return jsonify({
+            "status": "success",
+            "data": result
+        })
+    except Exception as e:
+        print(f"Fecal Prediction Error: {e}")
         return jsonify({"status": "error", "error": str(e)}), 500
 
 @app.route('/predict_video', methods=['POST', 'OPTIONS'])

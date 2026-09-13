@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { 
   Stethoscope, Upload, Video, Activity, AlertTriangle, CheckCircle2, 
-  Sparkles, RefreshCw, ShieldAlert, FileText, ArrowRight, PlayCircle, Camera, Clock, Eye, Layers
+  Sparkles, RefreshCw, ShieldAlert, FileText, ArrowRight, PlayCircle, Camera, Clock, Eye, Layers,
+  Droplets, Microscope
 } from 'lucide-react';
 import { POULTRY_DISEASES, SYMPTOM_CHECKLIST } from '../data/diseaseData';
 
@@ -26,6 +27,13 @@ export default function Diagnosis() {
   const [videoResult, setVideoResult] = useState(null);
   const [videoErrorMsg, setVideoErrorMsg] = useState(null);
   const [selectedKeyframe, setSelectedKeyframe] = useState(null);
+
+  // --- Fecal Diagnosis States ---
+  const [fecalFile, setFecalFile] = useState(null);
+  const [fecalPreview, setFecalPreview] = useState(null);
+  const [fecalLoading, setFecalLoading] = useState(false);
+  const [fecalResult, setFecalResult] = useState(null);
+  const [fecalErrorMsg, setFecalErrorMsg] = useState(null);
 
   // -------------------------------------------------------------
   // Image Upload Handlers & API Call
@@ -190,6 +198,63 @@ export default function Diagnosis() {
     }
   };
 
+  // -------------------------------------------------------------
+  // Fecal Upload Handlers & API Call
+  // -------------------------------------------------------------
+  const handleFecalChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setFecalFile(file);
+      setFecalPreview(URL.createObjectURL(file));
+      setFecalResult(null);
+      setFecalErrorMsg(null);
+    }
+  };
+
+  const handleFecalDiagnosis = async () => {
+    if (!fecalFile) return;
+
+    setFecalLoading(true);
+    setFecalErrorMsg(null);
+    setFecalResult(null);
+
+    const formData = new FormData();
+    formData.append('file', fecalFile);
+
+    try {
+      let response;
+      try {
+        response = await fetch('/predict_fecal', { method: 'POST', body: formData });
+        if (!response.ok && response.status === 404) throw new Error('Not found');
+      } catch {
+        response = await fetch('http://localhost:5000/predict_fecal', { method: 'POST', body: formData });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Server status ${response.status}: Failed to process fecal diagnosis.`);
+      }
+
+      const resData = await response.json();
+      if (resData.status === 'success' && resData.data) {
+        setFecalResult(resData.data);
+      } else {
+        throw new Error(resData.error || 'Invalid API response format.');
+      }
+    } catch (err) {
+      console.warn('Fecal API Error or server offline:', err);
+      setFecalErrorMsg('Error connecting to the fecal diagnostic backend at http://localhost:5000. Please start Flask app.py.');
+    } finally {
+      setFecalLoading(false);
+    }
+  };
+
+  const FECAL_LABELS = {
+    cocci: 'Coccidiosis',
+    healthy: 'Healthy',
+    ncd: 'Newcastle Disease',
+    salmo: 'Salmonella',
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-10 px-4 sm:px-6 lg:px-8 transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
@@ -202,13 +267,13 @@ export default function Diagnosis() {
           </div>
           <h1 className="text-3xl sm:text-5xl font-extrabold text-slate-900 dark:text-white">Poultry Disease Diagnosis Portal</h1>
           <p className="text-slate-600 dark:text-slate-400 mt-2 text-base">
-            Powered by <span className="font-bold text-emerald-600 dark:text-emerald-400">PoulCare-YOLOv11 Vision AI</span> (26 Clinical Lesion Classes). Upload photo for image AI, upload video for temporal detection, or use the interactive symptom checker.
+            Powered by <span className="font-bold text-emerald-600 dark:text-emerald-400">PoulCare-YOLOv11 Vision AI</span> (26 Clinical Lesion Classes) and a <span className="font-bold text-emerald-600 dark:text-emerald-400">dedicated Fecal Diagnostic Engine</span>. Upload a bird photo, a farm video, or a droppings photo — or use the symptom checker.
           </p>
         </div>
 
         {/* Tab Switcher */}
         <div className="flex justify-center mb-10">
-          <div className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1.5 rounded-2xl flex space-x-2 max-w-2xl w-full shadow-sm">
+          <div className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1.5 rounded-2xl flex space-x-2 max-w-4xl w-full shadow-sm">
             
             <button
               onClick={() => setActiveTab('image')}
@@ -232,6 +297,18 @@ export default function Diagnosis() {
             >
               <Video className="h-4 w-4" />
               <span>Video Detection AI</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('fecal')}
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 rounded-xl text-sm font-bold transition-all duration-200 cursor-pointer ${
+                activeTab === 'fecal'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-white shadow-md'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60'
+              }`}
+            >
+              <Droplets className="h-4 w-4" />
+              <span>Fecal Detection AI</span>
             </button>
 
             <button
@@ -746,7 +823,195 @@ export default function Diagnosis() {
           </div>
         )}
 
-        {/* TAB 3: SYMPTOMS-BASED DIAGNOSIS */}
+        {/* TAB 3: FECAL-BASED AI DIAGNOSIS */}
+        {activeTab === 'fecal' && (
+          <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto">
+
+            {/* Fecal Model Info Header */}
+            <div className="bg-gradient-to-r from-amber-900/30 via-slate-900 to-emerald-900/30 border border-amber-500/40 p-6 rounded-3xl flex items-start space-x-4 shadow-sm text-white">
+              <Microscope className="h-8 w-8 text-amber-400 shrink-0 mt-1" />
+              <div className="space-y-1">
+                <h3 className="text-lg font-bold">PoulCare Fecal Diagnostic Engine Active</h3>
+                <p className="text-slate-300 text-sm leading-relaxed">
+                  Upload a photo of poultry <strong>droppings</strong>. The dedicated
+                  <code className="text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded font-mono"> MobileNetV3-Large </code>
+                  classifier distinguishes the 4 primary conditions: Coccidiosis, Newcastle Disease, Salmonella and Healthy.
+                </p>
+              </div>
+            </div>
+
+            {/* Fecal Upload Dropzone */}
+            <div className="bg-white dark:bg-slate-900/80 border-2 border-dashed border-slate-300 dark:border-slate-800 hover:border-amber-500/60 rounded-3xl p-8 text-center transition-all duration-300 shadow-sm hover:shadow-md">
+              <input
+                type="file"
+                id="fecal-upload"
+                accept="image/*"
+                onChange={handleFecalChange}
+                className="hidden"
+              />
+
+              {!fecalPreview ? (
+                <label htmlFor="fecal-upload" className="cursor-pointer space-y-4 block">
+                  <div className="h-20 w-20 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center mx-auto text-amber-600 dark:text-amber-400">
+                    <Droplets className="h-10 w-10" />
+                  </div>
+                  <div>
+                    <span className="text-lg font-bold text-slate-900 dark:text-white block">Click to upload a droppings / fecal photo</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-sm mt-1 block">Classifies Coccidiosis, Newcastle Disease, Salmonella or Healthy (JPG, PNG)</span>
+                  </div>
+                </label>
+              ) : (
+                <div className="space-y-6">
+                  <div className="relative max-w-md mx-auto">
+                    <img
+                      src={fecalPreview}
+                      alt="Uploaded Droppings Preview"
+                      className="w-full max-h-80 object-contain rounded-2xl border-2 border-amber-500/40 shadow-xl bg-slate-900"
+                    />
+                    <button
+                      onClick={() => {
+                        setFecalFile(null);
+                        setFecalPreview(null);
+                        setFecalResult(null);
+                        setFecalErrorMsg(null);
+                      }}
+                      className="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 text-white rounded-full p-1.5 shadow-lg text-xs font-bold cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={handleFecalDiagnosis}
+                    disabled={fecalLoading}
+                    className="inline-flex items-center space-x-2 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white font-extrabold px-8 py-3.5 rounded-xl shadow-lg hover:scale-105 transition-all duration-200 cursor-pointer disabled:opacity-50"
+                  >
+                    {fecalLoading ? (
+                      <>
+                        <RefreshCw className="h-5 w-5 animate-spin" />
+                        <span>Analyzing Droppings Sample...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Microscope className="h-5 w-5" />
+                        <span>Analyze Droppings With Fecal AI</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {fecalErrorMsg && (
+              <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl text-red-600 dark:text-red-400 text-sm flex items-center space-x-3">
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                <span>{fecalErrorMsg}</span>
+              </div>
+            )}
+
+            {/* Fecal Result Card */}
+            {fecalResult && (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-lg space-y-6 animate-fadeIn">
+
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-6 gap-4">
+                  <div>
+                    <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center space-x-1.5">
+                      <Droplets className="h-3.5 w-3.5" />
+                      <span>Fecal Diagnostic Output</span>
+                    </span>
+                    <h2 className="text-3xl font-extrabold text-slate-900 dark:text-white mt-1">{fecalResult.disease_name}</h2>
+                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      Model: <code className="bg-slate-100 dark:bg-slate-800 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded font-mono">{fecalResult.model_architecture}</code>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-3">
+                    <div className="text-right">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">Confidence Score</div>
+                      <div className="text-2xl font-black text-amber-600 dark:text-amber-400">{fecalResult.confidence_percentage}%</div>
+                    </div>
+
+                    <span className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider ${
+                      fecalResult.severity === 'Critical'
+                        ? 'bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30'
+                        : fecalResult.severity === 'High'
+                        ? 'bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30'
+                        : 'bg-emerald-500/10 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                    }`}>
+                      {fecalResult.severity} Severity
+                    </span>
+                  </div>
+                </div>
+
+                {/* 4-Class Probability Distribution */}
+                {fecalResult.class_probabilities && (
+                  <div className="space-y-3 bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800/80 p-5 rounded-2xl">
+                    <h3 className="text-sm font-bold text-slate-800 dark:text-slate-300">Fecal Disease Probability Distribution</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {Object.entries(fecalResult.class_probabilities).map(([key, val]) => (
+                        <div key={key} className="space-y-1">
+                          <div className="flex justify-between text-xs text-slate-600 dark:text-slate-400">
+                            <span className="font-medium">{FECAL_LABELS[key] || key}</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{val}%</span>
+                          </div>
+                          <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full transition-all duration-500" style={{ width: `${val}%` }}></div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Description */}
+                <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/60 p-5 rounded-2xl">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2 flex items-center space-x-2">
+                    <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    <span>Clinical Summary</span>
+                  </h3>
+                  <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed">{fecalResult.description}</p>
+                </div>
+
+                {/* Symptoms & Treatment Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/60 p-5 rounded-2xl space-y-3">
+                    <h3 className="text-sm font-bold text-amber-600 dark:text-amber-400 flex items-center space-x-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      <span>Associated Symptoms</span>
+                    </h3>
+                    <ul className="space-y-2">
+                      {(fecalResult.symptoms || []).map((symptom, idx) => (
+                        <li key={idx} className="text-xs text-slate-700 dark:text-slate-300 flex items-start space-x-2">
+                          <span className="text-amber-500 shrink-0">•</span>
+                          <span>{symptom}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/60 p-5 rounded-2xl space-y-3">
+                    <h3 className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center space-x-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      <span>Veterinary Protocol & Treatment</span>
+                    </h3>
+                    <ul className="space-y-2">
+                      {(fecalResult.recommended_treatment || []).map((action, idx) => (
+                        <li key={idx} className="text-xs text-slate-700 dark:text-slate-300 flex items-start space-x-2">
+                          <span className="text-emerald-500 font-bold shrink-0">✔</span>
+                          <span>{action}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* TAB 4: SYMPTOMS-BASED DIAGNOSIS */}
         {activeTab === 'symptoms' && (
           <div className="space-y-10 animate-fadeIn max-w-5xl mx-auto">
             
