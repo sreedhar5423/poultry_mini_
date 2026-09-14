@@ -184,19 +184,15 @@ export default function Diagnosis() {
     formData.append('file', videoFile);
 
     try {
-      let response;
-      try {
-        response = await fetch('/predict_video', { method: 'POST', body: formData });
-        if (!response.ok && response.status === 404) throw new Error('Not found');
-      } catch {
-        response = await fetch('http://localhost:5000/predict_video', { method: 'POST', body: formData });
-      }
+      // Always use the same-origin endpoint. The Flask production server and
+      // the Vite development server both proxy this path to the local backend;
+      // the browser must never call localhost or a cloud inference service.
+      const response = await fetch('/predict_video', { method: 'POST', body: formData });
 
+      const resData = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(`Server returned status ${response.status}`);
+        throw new Error(resData.error || `Server returned status ${response.status}`);
       }
-
-      const resData = await response.json();
       if (resData.status === 'success' && resData.data) {
         setVideoResult(resData.data);
       } else {
@@ -204,7 +200,9 @@ export default function Diagnosis() {
       }
     } catch (err) {
       console.error('Video Diagnosis Error:', err);
-      setVideoErrorMsg('Error connecting to backend video detection server at http://localhost:5000. Please ensure python app.py is running.');
+      setVideoErrorMsg(
+        err.message || 'Unable to run the offline video detector. Please ensure the local Flask server is running and the bundled YOLO model is available.'
+      );
     } finally {
       setVideoLoading(false);
     }
@@ -564,9 +562,14 @@ export default function Diagnosis() {
             <div className="bg-gradient-to-r from-teal-900/30 via-slate-900 to-emerald-900/30 border border-teal-500/40 p-6 rounded-3xl flex items-start space-x-4 shadow-sm text-white">
               <PlayCircle className="h-8 w-8 text-teal-400 shrink-0 mt-1" />
               <div className="space-y-1">
-                <h3 className="text-lg font-bold">PoulCare Video Temporal Object Detection Active</h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-bold">PoulCare Offline Video Detector Active</h3>
+                  <span className="text-[10px] uppercase tracking-wider font-extrabold bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 px-2 py-1 rounded-full">
+                    Local model · No internet required
+                  </span>
+                </div>
                 <p className="text-slate-300 text-sm leading-relaxed">
-                  Extracts video frames, runs real-time object detection using <code className="text-teal-300 bg-teal-950/80 px-2 py-0.5 rounded font-mono">PoulCare-YOLOv11 Vision Engine</code>, overlays bounding boxes on detected lesion keyframes, and builds a temporal timeline.
+                  Extracts video frames and runs them locally with the bundled <code className="text-teal-300 bg-teal-950/80 px-2 py-0.5 rounded font-mono">YOLOv11</code> checkpoint. It overlays bounding boxes on detected lesion keyframes and builds a temporal timeline without calling Roboflow, Hugging Face, or any other cloud service.
                 </p>
               </div>
             </div>

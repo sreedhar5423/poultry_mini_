@@ -4,7 +4,13 @@ import json
 import tempfile
 from flask import Flask, request, jsonify, send_from_directory
 from PIL import Image
-from predict import predict_disease, load_model, load_class_mapping
+from predict import (
+    LOCAL_MODEL_SOURCE,
+    LOCAL_WEIGHTS_PATH,
+    predict_disease,
+    load_model,
+    load_class_mapping,
+)
 from video_detector import process_video_detection
 from fecal_detector import predict_fecal, load_fecal_model, FecalImageError
 from roboflow_detector import predict_image_roboflow, RoboflowInferenceError
@@ -37,6 +43,10 @@ def health():
         "status": "healthy",
         "model_source": "PoulCare-YOLOv11-Vision",
         "model_loaded": MODEL is not None,
+        "video_inference_mode": "offline_local",
+        "video_model_source": LOCAL_MODEL_SOURCE,
+        "video_model_path": LOCAL_WEIGHTS_PATH,
+        "video_model_available": os.path.isfile(LOCAL_WEIGHTS_PATH),
         "class_count": len(CLASS_MAPPING),
         "classes": CLASS_MAPPING,
         "fecal_model_loaded": FECAL_MODEL is not None,

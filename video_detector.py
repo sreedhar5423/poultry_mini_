@@ -3,8 +3,9 @@ PoulCare Neural Vision — Video Temporal Disease Detector
 =========================================================
 
 Samples frames across a video timeline, runs lesion detection on each frame
-(YOLO11 via `predict.py`), and aggregates results into a *temporally stable*
-diagnosis.
+with the bundled local YOLO11 checkpoint (via `predict.py`), and aggregates
+results into a *temporally stable* diagnosis. No cloud inference service or
+network request is used by this pipeline.
 
 Accuracy improvements implemented here (vs. naive frame summation):
 
@@ -24,7 +25,12 @@ import sys
 import json
 import cv2
 import numpy as np
-from predict import load_model, predict_disease, DISEASE_MAPPING
+from predict import (
+    LOCAL_MODEL_SOURCE,
+    load_model,
+    predict_disease,
+    DISEASE_MAPPING,
+)
 
 DEFAULT_CONF_THRESHOLD = 0.30
 DEFAULT_IOU = 0.45
@@ -251,7 +257,8 @@ def process_video_detection(
     class_probabilities["healthy"] = 98.5 if not disease_detected else 1.5
 
     return {
-        "model_source": "PoulCare Neural Vision Engine",
+        "model_source": LOCAL_MODEL_SOURCE,
+        "inference_mode": "offline_local",
         "model_architecture": "YOLOv11 Temporal Video Detector",
         "video_metadata": {
             "fps": round(fps, 2),

@@ -9,8 +9,11 @@ import cv2
 from PIL import Image
 from ultralytics import YOLO
 
-HF_MODEL_REPO = "Evet-Africa/poultry-disease-detector"
+# The detector checkpoint is shipped with this project.  Keep video inference
+# completely local: the Video Detection AI tab must not need Hugging Face,
+# Roboflow, or any other network service at runtime.
 LOCAL_WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "weights", "hf_poultry_yolo11n.pt")
+LOCAL_MODEL_SOURCE = "weights/hf_poultry_yolo11n.pt (bundled local checkpoint)"
 
 # Mapping of the 26 YOLO11 model classes to primary poultry disease categories
 DISEASE_MAPPING = {
@@ -89,23 +92,31 @@ DISEASE_MAPPING = {
 
 _MODEL_CACHE = None
 
-def download_hf_weights_if_needed():
-    os.makedirs(os.path.dirname(LOCAL_WEIGHTS_PATH), exist_ok=True)
-    if not os.path.exists(LOCAL_WEIGHTS_PATH):
-        print(f"Downloading model weights from repository...")
-        import urllib.request
-        url = f"https://huggingface.co/{HF_MODEL_REPO}/resolve/main/model.pt"
-        urllib.request.urlretrieve(url, LOCAL_WEIGHTS_PATH)
-        print(f"Downloaded model weights to {LOCAL_WEIGHTS_PATH}")
+
+def get_local_model_path():
+    """Return the bundled detector checkpoint, failing clearly when it is absent.
+
+    Do not download a replacement here.  This loader is shared by image and
+    video inference, and silently reaching out to Hugging Face would make the
+    Video Detection AI tab fail or hang on an offline farm computer.
+    """
+    if not os.path.isfile(LOCAL_WEIGHTS_PATH):
+        raise FileNotFoundError(
+            "The offline poultry video model is missing at "
+            f"{LOCAL_WEIGHTS_PATH}. Restore weights/hf_poultry_yolo11n.pt "
+            "before starting the application."
+        )
     return LOCAL_WEIGHTS_PATH
 
+
 def load_model():
+    """Load the bundled YOLO11 checkpoint without making any network request."""
     global _MODEL_CACHE
     if _MODEL_CACHE is not None:
         return _MODEL_CACHE
-    
-    weights_path = download_hf_weights_if_needed()
-    print(f"Loading PoulCare Neural Vision Model from {weights_path}...")
+
+    weights_path = get_local_model_path()
+    print(f"Loading offline PoulCare Neural Vision Model from {weights_path}...")
     _MODEL_CACHE = YOLO(weights_path)
     return _MODEL_CACHE
 

@@ -145,6 +145,23 @@ The video pipeline was also upgraded **without retraining** (see
 suppression, adaptive frame sampling and keyframe de-duplication — so accuracy
 on video improves even with the current weights.
 
+### Offline video mode
+
+The **Video Detection AI** tab uses only the bundled
+`weights/hf_poultry_yolo11n.pt` checkpoint and the local Flask endpoint
+`/predict_video`. It does not call Roboflow or Hugging Face. The loader now
+fails with a clear error if the checkpoint is missing instead of trying to
+download it, so video inference is deterministic and suitable for an offline
+computer. Install the Python dependencies once, then the video tab works
+without internet access:
+
+```bash
+python app.py
+```
+
+Use `GET /health` to confirm `video_inference_mode` is `offline_local` and
+`video_model_available` is `true`.
+
 ---
 
 ## 5. Fecal image validation gate

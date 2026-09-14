@@ -15,4 +15,4 @@ matplotlib
 pyyaml
 requests
 ultralytics==8.3.221
-inference-sdk
+# The app calls Roboflow with requests directly; inference-sdk is not needed.
