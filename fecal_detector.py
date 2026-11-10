@@ -41,6 +41,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 import torchvision.models as models
 from PIL import Image
+from kaggle_fecal import KaggleFecalModel, MODEL_PATH as KAGGLE_MODEL_PATH
 
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "poultry_disease_model.pth")
 CLASS_MAPPING_PATH = os.path.join(os.path.dirname(__file__), "class_mapping.json")
@@ -91,8 +92,17 @@ def load_fecal_model():
             "Run `python train.py` with the poultry_diseases dataset first."
         )
 
+    # Prefer the locally exported Kaggle model; old PyTorch weights remain a
+    # compatibility fallback until the TFLite artifact is supplied.
+    if os.path.isfile(KAGGLE_MODEL_PATH):
+        _MODEL_CACHE = KaggleFecalModel()
+        return _MODEL_CACHE
+
     model = _build_model(num_classes=len(CLASSES))
     checkpoint = torch.load(MODEL_PATH, map_location="cpu")
+
+    if isinstance(checkpoint, dict) and "classes" in checkpoint and checkpoint["classes"] != CLASSES:
+        raise ValueError("Fecal checkpoint classes do not match the fecal tab class order")
 
     if "model_state_dict" in checkpoint:
         state_dict = checkpoint["model_state_dict"]
@@ -262,20 +272,24 @@ def predict_fecal(image_input, model=None, use_tta=True, reject_non_fecal=True, 
     if model is None:
         model = load_fecal_model()
 
-    tensor = _preprocess(image_input)
     img_np = _to_bgr_array(image_input)
     meta = load_class_metadata()
 
-    with torch.no_grad():
-        if use_tta:
-            flipped = torch.flip(tensor, dims=[2])
-            batch = torch.stack([tensor, flipped], dim=0)
-            logits = model(batch)
-            probs = _softmax_probs(logits)
-            probs = probs.reshape(2, -1).mean(axis=0)
-        else:
-            logits = model(tensor.unsqueeze(0))
-            probs = _softmax_probs(logits)
+    if isinstance(model, KaggleFecalModel):
+        probs = model.probabilities(image_input)
+        # No TTA: the Kaggle notebook did not validate flipped test images.
+    else:
+        tensor = _preprocess(image_input)
+        with torch.no_grad():
+            if use_tta:
+                flipped = torch.flip(tensor, dims=[2])
+                batch = torch.stack([tensor, flipped], dim=0)
+                logits = model(batch)
+                probs = _softmax_probs(logits)
+                probs = probs.reshape(2, -1).mean(axis=0)
+            else:
+                logits = model(tensor.unsqueeze(0))
+                probs = _softmax_probs(logits)
 
     if reject_non_fecal:
         is_valid, reasons = validate_fecal_image(img_np, probs, thresholds=thresholds)
@@ -301,7 +315,7 @@ def predict_fecal(image_input, model=None, use_tta=True, reject_non_fecal=True, 
 
     return {
         "model_source": "PoulCare Fecal Diagnostic Engine",
-        "model_architecture": "MobileNetV3-Large Classifier (4-way)",
+        "model_architecture": model.architecture if isinstance(model, KaggleFecalModel) else "MobileNetV3-Large Classifier (4-way)",
         "class_key": class_key,
         "disease_name": info.get("name", class_key.capitalize()),
         "severity": info.get("severity", "None"),

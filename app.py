@@ -40,6 +40,7 @@ def health():
         "class_count": len(CLASS_MAPPING),
         "classes": CLASS_MAPPING,
         "fecal_model_loaded": FECAL_MODEL is not None,
+        "fecal_model_architecture": getattr(FECAL_MODEL, "architecture", "MobileNetV3-Large (legacy)"),
         "fecal_classes": ["cocci", "healthy", "ncd", "salmo"]
     })
 

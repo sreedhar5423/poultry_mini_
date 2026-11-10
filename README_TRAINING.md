@@ -15,107 +15,54 @@ power the **Diagnosis** page:
 
 ---
 
-## 1. Download the fecal dataset (Kaggle)
+## 1. Download and retrain the fecal classifier
 
-Run this in a terminal with your Kaggle account configured:
-
-```bash
-#!/bin/bash
-curl -L -o ~/Downloads/poultry-diseases-detection.zip \
-  https://www.kaggle.com/api/v1/datasets/download/kausthubkannan/poultry-diseases-detection
-```
-
-Then extract it:
+The fecal tab uses `poultry_disease_model.pth` on Flask startup. A new model is
+trained **to a separate candidate file** so an incomplete/poor run cannot
+silently replace the deployed checkpoint. Install compatible PyTorch and
+TorchVision builds for your machine, then `pip install -r requirements.txt
+kagglehub`.
 
 ```bash
-cd ~/Downloads
-unzip poultry-diseases-detection.zip -d poultry-diseases-detection
+# Downloads the exact Kaggle dataset requested (configure Kaggle access if required).
+python train.py --download --epochs 30 --batch-size 32
+
+# Or download separately, then train from its local path:
+python -c 'import kagglehub; print(kagglehub.dataset_download("kausthubkannan/poultry-diseases-detection"))'
+python train.py --data-dir /path/printed/above --epochs 30 --batch-size 32
 ```
 
-The archive contains a `poultry_diseases/` folder with 4 sub-folders:
+The directory may be either `poultry_diseases/` itself or its parent. It must
+contain `cocci/`, `healthy/`, `ncd/`, `salmo/`. Inputs are checked for readable
+images; no broken image is replaced with a black training sample. Exact and
+near-identical images are grouped *before* splitting to avoid train/test
+leakage. Conflicting duplicate labels stop training for manual inspection.
+This dHash heuristic is not a guarantee against every kind of duplicate;
+review acquisition sources and hold out entire farms/sessions if available.
 
-```
-poultry_diseases/
-├── cocci/     2103 fecal images  (Coccidiosis)
-├── healthy/   2057 fecal images  (Healthy)
-├── ncd/        376 fecal images  (Newcastle Disease)
-└── salmo/     2276 fecal images  (Salmonella)
-```
+Training uses augmentation, label smoothing, weight decay, inverse-frequency
+loss weights (or `--oversample`, **not both**), validation-loss early stopping,
+and logs train/validation loss, accuracy and validation macro F1. Validation
+selects the epoch; the separate test partition is reserved for one final check.
 
-**Note:** if you use the Kaggle "Download" button (browser) or
-`kaggle datasets download -d kausthubkannan/poultry-diseases-detection`
-(requires the Kaggle CLI + API token), the result is the same zip.
-
-Move/copy the extracted `poultry_diseases/` folder into this project root, so
-that `train.py` finds it:
-
-```
-poultry_mini_/
-├── poultry_diseases/   <-- put it here
-├── train.py
-├── evaluate.py
-└── ...
-```
-
----
-
-## 2. Retrain the fecal classifier (better accuracy)
+## 2. Evaluate and connect to the Fecal Detection AI tab
 
 ```bash
-# Install dependencies (Python 3.10/3.11 recommended)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-pip install scikit-learn matplotlib pillow numpy
-
-# Train (defaults are tuned for this dataset)
-python train.py --data-dir poultry_diseases --epochs 30 --oversample
+python evaluate.py --model fecal_candidate.pth --test-split fecal_candidate_test.json
+# Only after checking the per-class report, explicitly promote if the gate passes:
+python evaluate.py --model fecal_candidate.pth --test-split fecal_candidate_test.json --deploy
+# Restart python app.py (the checkpoint is cached in memory on startup).
 ```
 
-What the improved training script does differently:
-
-* **Strong augmentation** — random resized crop, flips, ±15° rotation, color
-  jitter, random erasing (reduces overfitting, improves generalization).
-* **Class-imbalance handling** — inverse-frequency class weights **plus**
-  optional `--oversample` (WeightedRandomSampler) because `ncd` has only ~376
-  images vs ~2,100 for the other classes.
-* **Label smoothing** (0.1) — better-calibrated confidence scores.
-* **AdamW + cosine schedule with warmup** — stable convergence.
-* **Early stopping** on validation accuracy (`--patience`, default 5).
-
-Useful flags:
-
-```bash
-python train.py --data-dir poultry_diseases \
-  --epochs 40 --batch-size 64 --lr 1e-3 --oversample \
-  --output poultry_disease_model.pth
-
-# If ImageNet weights can't be downloaded (offline), train from scratch:
-python train.py --data-dir poultry_diseases --no-pretrained
-```
-
-Outputs:
-
-| File | Description |
-|---|---|
-| `poultry_disease_model.pth` | Best checkpoint (auto-loaded by the app) |
-| `test_dataset.json` | Held-out test split (10%) |
-| `training_history.json` | Per-epoch loss/accuracy/LR |
-| `training_curves.png` | Metric plots |
-
----
-
-## 3. Evaluate the retrained fecal model
-
-```bash
-python evaluate.py
-```
-
-Produces a classification report (precision / recall / F1 per class),
-`confusion_matrix.png`, `evaluation_report.json`, and exports
-`poultry_disease_model.onnx`.
-
-> The bundled `poultry_disease_model.pth` was trained to **99.1% validation
-> accuracy**. After retraining with your own copy of the dataset, run
-> `evaluate.py` and compare against that baseline.
+The gate requires validation and test macro F1 >= 0.80, validation accuracy
+>= 0.80 and a validation/test macro F1 gap <= 0.10. This is a minimum
+screen, **not proof** that the model cannot overfit. Check training curves,
+confusion matrix in `fecal_candidate_report.json`, external field photos and
+per-class recall before use. If the gate fails, the existing model remains
+connected; collect more diverse images instead of lowering thresholds to
+force deployment. Candidate data, metrics and checkpoints are local and ignored
+by Git. To ship the promoted model, explicitly commit the updated
+`poultry_disease_model.pth` after reviewing its report.
 
 ---
 
@@ -230,3 +177,39 @@ npm run dev            # dev server at http://localhost:8080 (proxies /predict*,
 
 The Diagnosis page now has four tabs: **Image AI**, **Video Detection AI**,
 **Fecal Detection AI**, and **Symptom Checker**.
+
+## 8. Use the Kaggle notebook model offline (optional, different architecture)
+
+[Kausthub Kannan's Kaggle notebook](https://www.kaggle.com/code/kausthubkannan/poultry-disease-detection/output)
+provides a `model.hdf5` output trained with TensorFlow Hub MobileNetV2.
+This is **not** the PyTorch MobileNetV3 checkpoint described above. A notebook
+URL or `kaggle kernels pull` only provides code, not the model weights. Download
+notebook **output** on a machine that has Kaggle access:
+
+```bash
+kaggle kernels output kausthubkannan/poultry-disease-detection -p kaggle_output
+# Use TensorFlow + tensorflow_hub in a compatible Kaggle notebook environment:
+python export_kaggle_fecal.py kaggle_output/model.hdf5 kaggle_fecal.tflite
+# After reviewing accuracy on independent labeled images:
+cp kaggle_fecal.tflite weights/kaggle_fecal.tflite
+```
+
+For local conversion, install TensorFlow and tensorflow-hub separately; those
+large dependencies are **not** required to serve the exported model. The
+conversion script checks input/output shapes and numerical agreement with the
+Keras model. The Kaggle training notebook uses `rescale=1/225.` (not 1/255)
+and its four classes are alphabetically ordered: cocci, healthy, ncd, salmo.
+The app's offline TFLite adapter reproduces this preprocessing and exposes the
+same `/predict_fecal` JSON. It uses `tflite-runtime` on Linux; on Windows,
+install TensorFlow for its bundled TFLite interpreter. Inference does not
+contact Kaggle or TensorFlow Hub. Restart Flask after installing the artifact; the
+`/health` response reports which fecal architecture is active.
+
+**Important:** the model file is not in this repository and Kaggle is not
+reachable from this workspace. Until `weights/kaggle_fecal.tflite` exists, the
+app keeps its existing PyTorch fecal checkpoint as a compatibility fallback.
+Do not claim the Kaggle model is active until `/health` says
+`Kaggle MobileNetV2 (offline TFLite)`. The Kaggle notebook's reported
+validation score is not an independent held-out field test and does not
+establish that this model is less overfitted; evaluate real unseen samples
+and per-class Newcastle recall before switching.

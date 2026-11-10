@@ -26,3 +26,12 @@ temp_uploads/
 Thumbs.db
 .vscode/
 .idea/
+
+# Local Kaggle data and retraining artifacts (do not commit patient images or unverified models)
+poultry_diseases/
+fecal_candidate*.pth
+fecal_candidate*.json
+fecal_candidate*.png
+poultry_disease_model.pth.tmp
+# Kaggle model artifact, installed only after conversion and review
+weights/kaggle_fecal.tflite

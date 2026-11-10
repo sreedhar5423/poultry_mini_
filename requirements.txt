@@ -16,3 +16,6 @@ pyyaml
 requests
 ultralytics==8.3.221
 inference-sdk
+# For offline Kaggle fecal MobileNetV2 inference (CPU). Export separately on
+# Kaggle using TensorFlow/TF Hub; neither is needed to run this TFLite model.
+tflite-runtime>=2.14,<3; sys_platform == "linux"

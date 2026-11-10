@@ -17,11 +17,10 @@ Accuracy improvements over the original script:
   * Strong data augmentation (random resized crop, flips, rotation, color
     jitter, random erasing) -> better generalization.
   * Label smoothing -> less overconfident predictions, better calibration.
-  * Class-imbalance handling via inverse-frequency class weights *and*
-    optional oversampling (WeightedRandomSampler) for the under-represented
-    "ncd" class.
+  * Class-imbalance handling via inverse-frequency class weights OR optional
+    oversampling for the under-represented "ncd" class.
   * AdamW + cosine schedule with linear warmup.
-  * Early stopping on validation accuracy (no more fixed 10 epochs).
+  * Early stopping on validation loss (no more fixed 10 epochs).
   * Saves best checkpoint + training history JSON + metric curves.
 
 Usage:
@@ -42,7 +41,8 @@ from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 import torchvision.transforms as transforms
 import torchvision.models as models
 from PIL import Image
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score
+from split_fecal import discover, split_images
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -98,8 +98,8 @@ class FecalDataset(Dataset):
             for i, p in enumerate(image_paths):
                 try:
                     img = Image.open(p).convert("RGB")
-                except Exception:
-                    img = Image.new("RGB", (224, 224), (0, 0, 0))
+                except Exception as exc:
+                    raise RuntimeError(f"Unreadable training image: {p}") from exc
                 cache.append(img)
                 if (i + 1) % 2000 == 0 or (i + 1) == len(image_paths):
                     print(f"  Loaded [{i+1}/{len(image_paths)}]", flush=True)
@@ -114,8 +114,8 @@ class FecalDataset(Dataset):
         else:
             try:
                 img = Image.open(self.image_paths[idx]).convert("RGB")
-            except Exception:
-                img = Image.new("RGB", (224, 224), (0, 0, 0))
+            except Exception as exc:
+                raise RuntimeError(f"Unreadable training image: {self.image_paths[idx]}") from exc
         x = self.transform(img)
         return x, self.labels[idx]
 
@@ -124,11 +124,8 @@ class FecalDataset(Dataset):
 # Model
 # ---------------------------------------------------------------------------
 def build_model(num_classes=4, pretrained=True):
-    try:
-        weights = models.MobileNet_V3_Large_Weights.DEFAULT if pretrained else None
-        model = models.mobilenet_v3_large(weights=weights)
-    except Exception:
-        model = models.mobilenet_v3_large(pretrained=pretrained)
+    weights = models.MobileNet_V3_Large_Weights.DEFAULT if pretrained else None
+    model = models.mobilenet_v3_large(weights=weights)
 
     in_features = model.classifier[3].in_features
     model.classifier[3] = nn.Sequential(
@@ -139,26 +136,21 @@ def build_model(num_classes=4, pretrained=True):
 
 
 def load_dataset(data_dir):
-    image_paths, labels = [], []
-    for c in CLASSES:
-        cat_dir = os.path.join(data_dir, c)
-        if not os.path.isdir(cat_dir):
-            continue
-        for fname in sorted(os.listdir(cat_dir)):
-            if fname.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp")):
-                image_paths.append(os.path.join(cat_dir, fname))
-                labels.append(CLASS_TO_IDX[c])
-    return image_paths, labels
+    return discover(data_dir)
 
 
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
 def train(args):
-    torch.set_num_threads(os.cpu_count() or 4)
+    torch.set_num_threads(min(os.cpu_count() or 4, 4))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}", flush=True)
 
+    if args.download:
+        import kagglehub
+        args.data_dir = kagglehub.dataset_download("kausthubkannan/poultry-diseases-detection")
+        print(f"Downloaded dataset to {args.data_dir}", flush=True)
     image_paths, labels = load_dataset(args.data_dir)
     if len(image_paths) == 0:
         print(f"ERROR: no images found under {args.data_dir}. "
@@ -171,19 +163,11 @@ def train(args):
         dist[CLASSES[lbl]] = dist.get(CLASSES[lbl], 0) + 1
     print(f"Class distribution: {dist}", flush=True)
 
-    # Stratified splits: train 80% / val 10% / test 10% (falls back gracefully on tiny sets)
-    def safe_split(paths, lbls, test_size):
-        try:
-            return train_test_split(paths, lbls, test_size=test_size, random_state=SEED, stratify=lbls)
-        except ValueError:
-            return train_test_split(paths, lbls, test_size=test_size, random_state=SEED)
-
-    train_paths, temp_paths, train_labels, temp_labels = safe_split(image_paths, labels, 0.20)
-    val_paths, test_paths, val_labels, test_labels = safe_split(temp_paths, temp_labels, 0.50)
+    (train_paths, train_labels), (val_paths, val_labels), (test_paths, test_labels) = split_images(image_paths, labels, seed=SEED)
     print(f"Train: {len(train_paths)} | Val: {len(val_paths)} | Test: {len(test_paths)}", flush=True)
 
     # Persist test split for evaluate.py (uses forward slashes)
-    test_json = {"paths": [p.replace("\\", "/") for p in test_paths], "labels": test_labels}
+    test_json = {"paths": [os.path.abspath(p) for p in test_paths], "labels": test_labels, "classes": CLASSES}
     with open(args.test_split, "w") as f:
         json.dump(test_json, f, indent=2)
     print(f"Saved test split to {args.test_split}", flush=True)
@@ -191,7 +175,7 @@ def train(args):
     train_dataset = FecalDataset(train_paths, train_labels, is_train=True, in_memory=args.in_memory)
     val_dataset = FecalDataset(val_paths, val_labels, is_train=False, in_memory=args.in_memory)
 
-    # Class weights (inverse frequency) for the loss
+    # Use ONE imbalance correction: weighted loss OR oversampling (not both).
     class_counts = np.bincount(train_labels, minlength=len(CLASSES)).astype(np.float32)
     class_weights = len(train_labels) / (len(CLASSES) * class_counts)
     class_weights_tensor = torch.tensor(class_weights, dtype=torch.float32).to(device)
@@ -212,7 +196,7 @@ def train(args):
     model = build_model(num_classes=len(CLASSES), pretrained=not args.no_pretrained).to(device)
 
     criterion = nn.CrossEntropyLoss(
-        weight=class_weights_tensor, label_smoothing=args.label_smoothing
+        weight=None if args.oversample else class_weights_tensor, label_smoothing=args.label_smoothing
     )
     optimizer = optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
@@ -228,8 +212,8 @@ def train(args):
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
-    history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [], "lr": []}
-    best_val_acc = 0.0
+    history = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": [], "val_macro_f1": [], "lr": []}
+    best_val_loss = float("inf")
     patience_counter = 0
     best_state = None
 
@@ -258,6 +242,7 @@ def train(args):
         # ---- Validate ----
         model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
+        val_preds, val_targets = [], []
         with torch.no_grad():
             for images, targets in val_loader:
                 images, targets = images.to(device), targets.to(device)
@@ -267,43 +252,48 @@ def train(args):
                 _, preds = torch.max(outputs, 1)
                 val_correct += (preds == targets).sum().item()
                 val_total += targets.size(0)
+                val_preds.extend(preds.cpu().tolist())
+                val_targets.extend(targets.cpu().tolist())
 
         val_loss /= val_total
         val_acc = val_correct / val_total
+        val_macro_f1 = f1_score(val_targets, val_preds, labels=list(range(len(CLASSES))), average="macro", zero_division=0)
 
         lr_now = optimizer.param_groups[0]["lr"]
         history["train_loss"].append(round(train_loss, 6))
         history["train_acc"].append(round(train_acc, 6))
         history["val_loss"].append(round(val_loss, 6))
         history["val_acc"].append(round(val_acc, 6))
+        history["val_macro_f1"].append(round(val_macro_f1, 6))
         history["lr"].append(round(lr_now, 8))
 
         print(f"Epoch [{epoch:02d}/{args.epochs}] | "
               f"Train Loss: {train_loss:.4f} | Train Acc: {train_acc*100:.2f}% | "
-              f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc*100:.2f}% | lr {lr_now:.2e}", flush=True)
+              f"Val Loss: {val_loss:.4f} | Val Acc: {val_acc*100:.2f}% | Macro F1: {val_macro_f1:.3f} | lr {lr_now:.2e}", flush=True)
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        if val_loss < best_val_loss - args.min_delta:
+            best_val_loss = val_loss
             patience_counter = 0
             best_state = {
                 "epoch": epoch,
                 "model_state_dict": {k: v.cpu().clone() for k, v in model.state_dict().items()},
-                "val_acc": best_val_acc,
+                "val_acc": val_acc,
+                "val_macro_f1": val_macro_f1,
                 "val_loss": val_loss,
                 "classes": CLASSES,
                 "history": history,
             }
-            print(f"  --> New best model (Val Acc {best_val_acc*100:.2f}%)", flush=True)
+            print(f"  --> New best model (Val Loss {best_val_loss:.4f})", flush=True)
         else:
             patience_counter += 1
             if patience_counter >= args.patience:
-                print(f"Early stopping triggered at epoch {epoch} (no val-acc improvement for "
+                print(f"Early stopping triggered at epoch {epoch} (no val-loss improvement for "
                       f"{args.patience} epochs).", flush=True)
                 break
 
     # Save the best model + metrics
     torch.save(best_state, args.output)
-    print(f"\nSaved best model to {args.output} (Val Acc: {best_val_acc*100:.2f}%)", flush=True)
+    print(f"\nSaved best model to {args.output} (Val Loss: {best_val_loss:.4f})", flush=True)
 
     with open(args.history_json, "w") as f:
         json.dump(history, f, indent=2)
@@ -342,6 +332,8 @@ def plot_metrics(history, path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train PoulCare fecal disease classifier")
+    parser.add_argument("--download", action="store_true", help="Download Kaggle dataset using kagglehub (requires Kaggle access)")
+    parser.add_argument("--min-delta", type=float, default=0.002, help="Minimum validation loss improvement")
     parser.add_argument("--data-dir", type=str, default="poultry_diseases", help="Root dir with cocci/healthy/ncd/salmo subfolders")
     parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -353,9 +345,9 @@ if __name__ == "__main__":
     parser.add_argument("--oversample", action="store_true", help="Enable WeightedRandomSampler for imbalance")
     parser.add_argument("--no-pretrained", action="store_true", help="Train from scratch (no ImageNet weights)")
     parser.add_argument("--in-memory", action="store_true", help="Pre-load all images into memory (faster, more RAM)")
-    parser.add_argument("--output", type=str, default="poultry_disease_model.pth")
-    parser.add_argument("--test-split", type=str, default="test_dataset.json")
-    parser.add_argument("--history-json", type=str, default="training_history.json")
-    parser.add_argument("--plot", type=str, default="training_curves.png")
+    parser.add_argument("--output", type=str, default="fecal_candidate.pth")
+    parser.add_argument("--test-split", type=str, default="fecal_candidate_test.json")
+    parser.add_argument("--history-json", type=str, default="fecal_candidate_history.json")
+    parser.add_argument("--plot", type=str, default="fecal_candidate_curves.png")
     args = parser.parse_args()
     train(args)
